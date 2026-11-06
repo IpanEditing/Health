@@ -1,0 +1,598 @@
+import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import NavbarDashboard from "../components/NavbarDashboard";
+import {
+  Chart as ChartJS,
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend,
+} from "chart.js";
+import { Radar } from "react-chartjs-2";
+
+ChartJS.register(
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend
+);
+
+export default function Perbandingan() {
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // 🔥 ambil data (state + localStorage)
+  const saved = JSON.parse(
+    localStorage.getItem("hasilAnalisis")
+  );
+
+  const factors =
+    location.state?.factors ||
+    saved?.factors ||
+    [];
+
+  const total =
+    location.state?.total_score ||
+    saved?.total ||
+    0;
+
+  const umkm = location.state;
+
+  // 🔥 redirect kalau kosong
+  useEffect(() => {
+    if (!factors.length) {
+      navigate("/asesmen");
+    }
+  }, [factors, navigate]);
+
+  useEffect(() => {
+
+    const user =
+      JSON.parse(localStorage.getItem("user"));
+
+    if (!user?.id_user) return;
+
+    // 🔥 Menggunakan URL relatif agar adaptif menembus server hosting InfinityFree
+    fetch(
+      `/api-sisehat/history_assessment.php?id_user=${user.id_user}`
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        // Amankan agar data selalu berupa array bersih
+        const cleanArray = Array.isArray(data) ? data : (data?.data || []);
+        setAssessmentHistory(cleanArray);
+
+        if (cleanArray.length > 0) {
+          setSelectedAssessment(0);
+
+          setCurrentFactors(
+            cleanArray[0].factors || []
+          );
+
+          setCurrentTotal(
+            cleanArray[0].total_score || 0
+          );
+
+        }
+
+      });
+
+  }, []);
+
+
+  const [assessmentHistory, setAssessmentHistory] =
+    useState([]);
+
+  const [selectedAssessment, setSelectedAssessment] =
+    useState(0);
+
+  const [currentFactors, setCurrentFactors] =
+    useState(factors);
+
+  const [currentTotal, setCurrentTotal] =
+    useState(total);
+
+  // 🔥 PILIHAN INDUSTRI
+  const [selectedIndustry, setSelectedIndustry] =
+    useState("umkm");
+
+  const [industryData, setIndustryData] =
+    useState([]);
+
+  useEffect(() => {
+
+    const kategoriMap = {
+      umkm: "Kuliner",
+      kuliner: "Kuliner",
+      fashion: "Fashion",
+      retail: "Retail",
+      jasa: "Jasa"
+    };
+
+    // 🔥 Menggunakan URL relatif untuk komparasi industri standar
+    fetch(
+      `/api-sisehat/compare.php?kategori=${kategoriMap[selectedIndustry]}`
+    )
+      .then((res) => res.json())
+      .then((data) => {
+
+        setIndustryData(
+          data.factors || []
+        );
+
+      });
+
+  }, [selectedIndustry]);
+
+  // 🔥 INDUSTRI
+  const industryOptions = [
+
+    {
+      id: "umkm",
+      label: "UMKM Nasional",
+    },
+
+    {
+      id: "kuliner",
+      label: "UMKM Kuliner",
+    },
+
+    {
+      id: "fashion",
+      label: "UMKM Fashion",
+    },
+
+    {
+      id: "retail",
+      label: "UMKM Retail",
+    },
+
+    {
+      id: "jasa",
+      label: "UMKM Jasa",
+    },
+
+  ];
+
+  // 🔥 SINKRONISASI ATURAN ROLE DARI FRONTEND:
+  // Kita hanya memfilter data industri yang namanya cocok dengan faktor yang diisi oleh user saat ini
+  const filteredIndustry = industryData.filter((item) =>
+    currentFactors.some((f) => f.name === item.name || f.code === item.code)
+  );
+
+  // 🔥 CHART DATA (DIBUAT 100% DINAMIS MENGIKUTI JUMLAH FAKTOR USER/KARYAWAN)
+  const chartData = {
+    // Labels hanya memuat nama faktor yang diisi oleh user (bisa 3 faktor atau 4 faktor)
+    labels: currentFactors.map((f) => f.name),
+
+    datasets: [
+      {
+        label: "Hasil Anda",
+        data: currentFactors.map((f) => f.score),
+        backgroundColor: "rgba(59,130,246,0.2)",
+        borderColor: "#163456",
+      },
+      {
+        label: industryOptions.find((i) => i.id === selectedIndustry)?.label,
+        // Data industri dipetakan urutannya secara presisi mencocokkan nama faktor user saat ini
+        data: currentFactors.map((userFactor) => {
+          const match = industryData.find((indFactor) => indFactor.name === userFactor.name);
+          return match ? match.score : 0;
+        }),
+        borderColor: "#9ca3af",
+        borderDash: [5, 5],
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+
+    scales: {
+      r: {
+        min: 0,
+        max: 100,
+
+        ticks: {
+          stepSize: 20,
+        },
+      },
+    },
+  };
+
+  return (
+    <div className="bg-[#f4f7fb] min-h-screen overflow-x-hidden">
+
+      <NavbarDashboard />
+
+      <div className="px-4 sm:px-6 md:px-8 lg:px-16 py-6 md:py-10">
+
+        {/* HEADER */}
+        <h1 className="text-2xl md:text-3xl font-bold text-blue-900 leading-tight">
+
+          Perbandingan Asesmen Bisnis
+
+        </h1>
+
+        <p className="text-gray-500 mt-2 text-sm sm:text-base leading-relaxed">
+
+          Analisis performa bisnis Anda dibandingkan dengan standar industri
+
+        </p>
+
+        {/* TOP FILTER */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-6">
+
+          {/* ASESMEN */}
+          <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border min-w-0">
+
+            <p className="text-xs text-gray-400 mb-2">
+
+              Pilih Asesmen
+
+            </p>
+
+            <select
+              value={selectedAssessment}
+              onChange={(e) => {
+
+                const index = Number(e.target.value);
+
+                setSelectedAssessment(index);
+
+                setCurrentFactors(
+                  assessmentHistory[index]?.factors || []
+                );
+
+                setCurrentTotal(
+                  assessmentHistory[index]?.total_score || 0
+                );
+
+              }}
+              className="w-full border p-3 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-900"
+            >
+
+              {Array.isArray(assessmentHistory) && assessmentHistory.map(
+                (item, index) => {
+                  const rawDate = item.tanggal_asesmen || item.tanggal_simpan || new Date().toISOString();
+                  
+                  let formattedDate = rawDate;
+                  if (typeof rawDate === "string" && !rawDate.includes(" ")) {
+                    const parsed = new Date(rawDate);
+                    if (!isNaN(parsed)) {
+                      formattedDate = parsed.toLocaleDateString("id-ID", {
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric",
+                      });
+                    }
+                  }
+
+                  return (
+                    <option key={index} value={index}>
+                      {formattedDate}
+                    </option>
+                  );
+                }
+              )}
+
+            </select>
+
+          </div>
+
+          {/* INDUSTRI */}
+          <div className="bg-white p-5 sm:p-6 rounded-xl shadow min-w-0">
+
+            <p className="text-xs text-gray-400 mb-2">
+
+              Bandingkan Industri
+
+            </p>
+
+            <select
+              value={selectedIndustry}
+              onChange={(e) =>
+                setSelectedIndustry(
+                  e.target.value
+                )
+              }
+              className="w-full border p-3 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-900"
+            >
+
+              {industryOptions.map(
+                (item) => (
+
+                  <option
+                    key={item.id}
+                    value={item.id}
+                  >
+
+                    {item.label}
+
+                  </option>
+
+                )
+              )}
+
+            </select>
+
+          </div>
+
+        </div>
+
+        {/* GRID */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mt-6 sm:mt-8">
+
+          {/* CHART */}
+          <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-xl shadow min-w-0">
+
+            <h3 className="font-semibold text-blue-900 mb-4">
+
+              Visualisasi Faktor Strategis
+
+            </h3>
+
+            <div className="relative h-[300px] sm:h-[390px] lg:h-[450px] w-full">
+              <Radar
+                data={chartData}
+                options={options}
+              />
+            </div>
+            <p className="text-sm text-gray-500 mt-4 leading-relaxed">
+
+              Membandingkan dengan{" "}
+
+              <span className="font-semibold text-blue-900">
+
+                {
+                  industryOptions.find(
+                    (i) =>
+                      i.id === selectedIndustry
+                  )?.label
+                }
+
+              </span>
+
+            </p>
+
+          </div>
+
+          {/* RIGHT */}
+          <div className="flex flex-col gap-4 sm:gap-6 min-w-0">
+
+            {/* INSIGHT */}
+            <div className="bg-blue-900 text-white p-5 sm:p-6 rounded-xl">
+
+              <h3 className="font-semibold mb-2">
+
+                Wawasan Perbandingan
+
+              </h3>
+
+              <p className="text-sm leading-relaxed">
+
+                Hasil asesmen Anda dibandingkan
+                dengan rata-rata{" "}
+
+                <b>
+                  {
+                    industryOptions.find(
+                      (i) =>
+                        i.id ===
+                        selectedIndustry
+                    )?.label
+                  }
+                </b>.
+
+              </p>
+
+            </div>
+
+            {/* SCORE */}
+            <div className="bg-white p-5 sm:p-6 rounded-xl shadow">
+
+              <p className="text-sm text-gray-400">
+
+                Skor Anda
+
+              </p>
+
+              <h2 className="text-3xl font-bold text-blue-900 mt-2">
+
+                {currentTotal}/100
+
+              </h2>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* SUMMARY */}
+        <div className="bg-white p-5 sm:p-6 rounded-xl shadow mt-4 sm:mt-6">
+
+          <h3 className="font-semibold text-blue-900 mb-3">
+
+            Ringkasan Analisis
+
+          </h3>
+
+          <p className="text-sm text-gray-600 leading-relaxed">
+
+            Bisnis Anda memiliki performa{" "}
+
+            <span className="font-semibold text-blue-900">
+
+              {
+                currentTotal >= 85
+                  ? "sangat baik"
+                  : currentTotal >= 70
+                    ? "cukup stabil"
+                    : "yang masih perlu ditingkatkan"
+              }
+
+            </span>
+
+            {" "}dibandingkan rata-rata{" "}
+
+            <span className="font-semibold text-blue-900">
+
+              {
+                industryOptions.find(
+                  (i) =>
+                    i.id === selectedIndustry
+                )?.label
+              }
+
+            </span>.
+
+          </p>
+
+        </div>
+
+        {/* TABLE */}
+        <div className="bg-white mt-6 sm:mt-8 rounded-xl shadow overflow-hidden">
+
+          <div className="px-5 sm:px-6 py-4 border-b flex flex-col sm:flex-row sm:justify-between gap-2">
+
+            <h3 className="font-semibold text-blue-900">
+
+              Rincian Perbandingan Per Faktor
+
+            </h3>
+
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[650px] text-sm">
+
+              <thead className="bg-gray-50 text-gray-400 text-xs">
+
+                <tr>
+
+                  <th className="p-4 text-left">
+
+                    Faktor
+
+                  </th>
+
+                  <th>
+
+                    Hasil Anda
+
+                  </th>
+
+                  <th>
+
+                    Industri
+
+                  </th>
+
+                  <th>
+
+                    Delta
+
+                  </th>
+
+                </tr>
+
+              </thead>
+
+              <tbody>
+
+                {currentFactors.map(
+                  (item, i) => {
+
+                    const avg =
+                      industryData.find(
+                        (f) =>
+                          f.name === item.name
+                      )?.score || 0;
+                    const delta =
+                      item.score - avg;
+
+                    return (
+
+                      <tr
+                        key={i}
+                        className="border-t text-center"
+                      >
+
+                        <td className="text-left p-4 font-medium">
+
+                          {item.name}
+
+                        </td>
+
+                        <td>
+
+                          {item.score}
+
+                        </td>
+
+                        <td>
+
+                          {avg}
+
+                        </td>
+
+                        <td
+                          className={
+                            delta >= 0
+                              ? "text-green-600 font-semibold"
+                              : "text-red-500 font-semibold"
+                          }
+                        >
+
+                          {delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)}
+
+                        </td>
+
+                      </tr>
+                    );
+                  }
+                )}
+
+              </tbody>
+
+            </table>
+          </div>
+
+        </div>
+
+        {/* BUTTON */}
+        <div className="flex justify-center mt-8 sm:mt-10">
+
+          <button
+            onClick={() =>
+              navigate(
+                "/rekomendasi",
+                {
+                  state: {
+                    factors: currentFactors,
+                    total: currentTotal,
+                  },
+                }
+              )
+            }
+            className="bg-blue-900 text-white px-6 py-3 rounded-lg shadow w-full sm:w-auto"
+          >
+
+            Lihat Rekomendasi Perbaikan
+
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
